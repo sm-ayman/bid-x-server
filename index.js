@@ -151,6 +151,7 @@ async function run() {
       }
 
       const cursor = bidsCollection.find(query);
+      console.log(cursor)
       const result = await cursor.toArray();
       res.send(result);
     });
