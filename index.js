@@ -4,11 +4,45 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 5000;
+var admin = require("firebase-admin");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
+var serviceAccount = require("./bid-x_firebase-adminsdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 // middleware
 app.use(cors());
 app.use(express.json());
+
+const logger = (req, res, next) => {
+  console.log("logging info");
+  next();
+};
+
+const verifyFBToken = async (req, res, next) => {
+  console.log("In the verified middleware", req.headers.authorization);
+  if (!req.headers.authorization) {
+    // do not allow to go
+    return res.status(401).send({ message: "Unauthorized Access!" });
+  }
+  const token = req.headers.authorization.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized Access!" });
+  }
+
+  // verify token
+  try {
+    const tokenInfo = await admin.auth().verifyIdToken(token);
+    console.log("After validating Token Information - ", tokenInfo);
+    req.token_email = tokenInfo.email;
+    next();
+  } catch {
+    return res.status(401).send({ message: "Unauthorized Access!" });
+  }
+};
 
 // uri
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.ggobuyv.mongodb.net/?appName=Cluster0`;
@@ -105,10 +139,14 @@ async function run() {
     });
 
     // my-bids
-    app.get("/bids", async (req, res) => {
+    app.get("/bids", logger, verifyFBToken, async (req, res) => {
+      // console.log("headers: ", req.headers);
       const email = req.query.email;
       const query = {};
       if (email) {
+        if (email !== req.token_email) {
+          return res.status(403).send({ message: "Forbidden Access!" });
+        }
         query.buyer_email = email;
       }
 
@@ -138,7 +176,7 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await bidsCollection.deleteOne(query);
-      res.send(result)
+      res.send(result);
     });
 
     // update-bid
